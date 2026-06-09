@@ -1,0 +1,16 @@
+# 가상환경
+.venv/
+env/
+# 환경 변수 파일
+.env
+.env.*
+
+# IDE 설정 파일
+.vscode/
+
+# 파이썬 캐시 파일
+__pycache__/
+*.pyc
+
+# 라마압축파일
+*.bin
