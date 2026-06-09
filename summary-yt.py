@@ -47,21 +47,30 @@ def get_youtube_title(video_id):
         pass
     return "제목을 불러올 수 없는 영상"
 
-def get_transcript(video_id):
-    """비디오 ID로 자막을 가져옵니다. 한국어가 없으면 다른 언어를 가져옵니다."""
+def get_transcript(video_id, title=""):
+    """비디오 ID로 자막을 가져옵니다. 자막이 없으면 예외를 발생시키지 않고 대체 텍스트를 반환합니다."""
     try:
-        ytt_api = YouTubeTranscriptApi()
-        transcript_list = ytt_api.list(video_id)
-        
+        try:
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        except AttributeError:
+            # 혹시 모를 구버전/오류 방어 코드
+            ytt_api = YouTubeTranscriptApi()
+            transcript_list = ytt_api.list(video_id)
+            
         # 1. 한국어 자막이 있는지 우선 확인
         try:
             transcript = transcript_list.find_transcript(['ko'])
         except Exception:
-            # 2. 없다면 사용 가능한 아무 자막이나 가져오기 (이후 LLM이 알아서 번역)
+            # 2. 없다면 사용 가능한 아무 자막이나 가져오기
             transcript = next(iter(transcript_list))
             
         fetched_transcript = transcript.fetch()
-        text = " ".join([t.text for t in fetched_transcript])
+        
+        # t가 딕셔너리인지 객체인지 처리
+        if fetched_transcript and isinstance(fetched_transcript[0], dict):
+            text = " ".join([t.get('text', '') for t in fetched_transcript])
+        else:
+            text = " ".join([getattr(t, 'text', '') for t in fetched_transcript])
         
         # 텍스트가 너무 길 경우 토큰 제한 및 비용 절감을 위해 자르기 (약 3~4시간 분량)
         max_length = 100000
@@ -70,8 +79,8 @@ def get_transcript(video_id):
             
         return text
     except Exception as e:
-        st.error(f"자막을 가져오는데 실패했습니다. 자막이 제공되지 않는 영상일 수 있습니다. (에러: {e})")
-        return None
+        # 에러 발생 시 UI 에러를 띄우지 않고, 제목을 활용한 안내 텍스트 반환
+        return f"[자막 추출 불가 영상] 자막을 가져오는데 실패했습니다. (영상 제목: {title}) 자막이 제공되지 않거나 추출이 불가능한 영상이므로 영상의 제목을 바탕으로 영상의 주제를 유추해서 요약해주세요."
 
 def summarize_text(text):
     """LangChain을 사용하여 텍스트를 요약하고 한국어로 작성합니다."""
@@ -103,7 +112,7 @@ if st.button("요약하기", type="primary"):
             with st.spinner("영상 정보와 자막을 추출하고 있습니다..."):
                 title = get_youtube_title(video_id)
                 thumbnail_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
-                transcript_text = get_transcript(video_id)
+                transcript_text = get_transcript(video_id, title)
             
             if transcript_text:
                 with st.spinner("AI가 내용을 요약 중입니다... 잠시만 기다려주세요."):
