@@ -1,5 +1,10 @@
 streamlit
 langchain
+langchain-core
 langchain-openai
+langchain-community
+langchain-chroma
+langchain-text-splitters
 youtube-transcript-api
 python-dotenv
+pypdf
