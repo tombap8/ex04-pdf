@@ -18,7 +18,7 @@ load_dotenv()
 
 # 페이지 설정
 st.set_page_config(
-    page_title="RAG 챗봇",
+    page_title="사내지식기반RAG챗봇",
     page_icon="📚",
     layout="wide"
 )
@@ -136,7 +136,8 @@ def process_pdf_and_create_chain(uploaded_file):
 
 
 # 메인 앱 타이틀
-st.title("📚 개인 맞춤형 RAG 챗봇")
+st.title("🏢사내지식기반 RAG 챗봇")
+st.subheader("📌 PDF올리고 다 물어봐!")
 
 # 세션 상태 초기화
 if "messages" not in st.session_state:
