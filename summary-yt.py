@@ -15,11 +15,10 @@ st.set_page_config(page_title="유튜브 요약 AI", page_icon="🎥", layout="c
 
 st.title("🎥 유튜브 요약 AI")
 st.markdown("""
-유튜브 영상 링크를 입력하면 AI가 영상의 자막을 추출하여 내용을 깔끔하게 요약해 줍니다. 
+유튜브 영상 링크를 입력하면 AI가 영상의 자막을 추출하여 내용을 깔끔하게 요약해 줍니다.
 **해외 영상도 한국어로 자동 번역되어 요약됩니다!**
-*(주의: 작동을 위해서는 `.env` 파일에 `OPENAI_API_KEY`가 설정되어 있어야 합니다.)*
+*(안내: 서버 환경 또는 Streamlit Secrets에 `OPENAI_API_KEY`가 설정되어 있어야 합니다.)*
 """)
-
 def extract_video_id(url):
     """유튜브 URL에서 비디오 ID를 추출합니다."""
     parsed_url = urlparse(url)
@@ -85,7 +84,7 @@ def get_transcript(video_id, title=""):
 def summarize_text(text):
     """LangChain을 사용하여 텍스트를 요약하고 한국어로 작성합니다."""
     if not os.environ.get("OPENAI_API_KEY"):
-        raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하거나 환경 변수를 설정해주세요.")
+        raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다. 서버 환경 변수 또는 Streamlit Secrets를 설정해주세요.")
         
     # 모델 설정 (비용 효율적이고 성능이 좋은 gpt-4o-mini 사용)
     llm = ChatOpenAI(temperature=0.2, model_name="gpt-4o-mini")
