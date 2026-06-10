@@ -4,7 +4,7 @@ from pypdf import PdfReader
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_chroma import Chroma
+from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_classic.retrievers import MultiQueryRetriever
 
@@ -96,8 +96,8 @@ def load_rag_chain():
     # OpenAI의 텍스트 임베딩 모델을 사용하여 텍스트를 벡터로 변환
     embeddings_model = OpenAIEmbeddings(model="text-embedding-3-small")
 
-    # 벡터화된 청크들을 Chroma 벡터 데이터베이스에 저장
-    db = Chroma.from_documents(texts, embeddings_model)
+    # 벡터화된 청크들을 FAISS 벡터 데이터베이스에 저장
+    db = FAISS.from_documents(texts, embeddings_model)
 
     # GPT-4o-mini 모델을 사용하여 질문-답변 작업 수행
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)

@@ -3,11 +3,10 @@ langchain
 langchain-core
 langchain-openai
 langchain-community
-langchain-chroma
 langchain-text-splitters
 python-dotenv
 pypdf
 openai
-chromadb
+faiss-cpu
 pydantic
 requests
