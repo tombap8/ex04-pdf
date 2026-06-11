@@ -12,7 +12,7 @@ from langchain_classic.chains.combine_documents import create_stuff_documents_ch
 from langchain_core.prompts import (   ChatPromptTemplate )
 from langchain_core.callbacks import   BaseCallbackHandler
 
-st.title("📄 PDF File Reader")
+st.title("📄 PDF File Reader [API KEY 입력 필수]")
 st.write("----------------")
 
 
