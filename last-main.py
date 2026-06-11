@@ -72,24 +72,36 @@ class StreamHandler(  BaseCallbackHandler ):
         self.container.markdown(    self.text  )
 
 if uploaded_file is not None:
-    pages = pdf_to_document(   uploaded_file   )
-    # st.success(   f"PDF 페이지 : {len(pages)}"  )
+    if not openai_key:
+        st.warning("위 입력칸에 OpenAI API 키를 먼저 입력해주세요.")
+        st.stop()
 
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=100
-    )
+    # 캐싱(세션 상태)을 통해 페이지가 새로고침 될 때마다 DB를 다시 만드는 것을 방지합니다.
+    if "db" not in st.session_state or st.session_state.get("uploaded_filename") != uploaded_file.name:
+        with st.spinner("최초 1회 문서를 분석하고 임베딩(DB 생성) 중입니다. 문서 크기에 따라 시간이 걸릴 수 있습니다..."):
+            pages = pdf_to_document(   uploaded_file   )
 
-    texts = text_splitter.split_documents(    pages   )
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=500,
+                chunk_overlap=100
+            )
 
-    # st.info(  f"문서 조각 : {len(texts)}"  )
+            texts = text_splitter.split_documents(    pages   )
 
-    embeddings = OpenAIEmbeddings(  api_key=openai_key   )
+            embeddings = OpenAIEmbeddings(  api_key=openai_key   )
 
-    db = Chroma.from_documents(
-        documents=texts,
-        embedding=embeddings
-    )
+            db = Chroma.from_documents(
+                documents=texts,
+                embedding=embeddings
+            )
+            
+            # 세션에 저장
+            st.session_state.db = db
+            st.session_state.uploaded_filename = uploaded_file.name
+            st.success("문서 분석이 완료되었습니다! 이제 질문해주세요.")
+    else:
+        # 이미 분석된 DB 재사용
+        db = st.session_state.db
 
     retriever = db.as_retriever(
         search_kwargs={
@@ -111,7 +123,7 @@ if uploaded_file is not None:
                 handler = StreamHandler(      chat_box       )
 
                 llm = ChatOpenAI(
-                    model="gpt-4.1-mini",
+                    model="gpt-4o-mini",
                     temperature=0,
                     api_key=openai_key,
                     streaming=True,
