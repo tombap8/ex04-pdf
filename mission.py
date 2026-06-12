@@ -10,7 +10,6 @@ from langchain_classic.chains import (   create_retrieval_chain )
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 
 from langchain_core.prompts import (   ChatPromptTemplate )
-from langchain_core.callbacks import   BaseCallbackHandler
 
 st.title("📄 PDF File Reader")
 st.text("📌[API KEY 입력 필수]")
@@ -21,6 +20,14 @@ openai_key = st.text_input(  "OPENAI_API_KEY",    type="password" )
 
 uploaded_file = st.file_uploader(   "PDF 파일을 올려주세요",   type=["pdf"] )
 st.write("----------------")
+
+# 세션 상태 초기화 (대화 기록 및 체인 저장용)
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "qa_chain" not in st.session_state:
+    st.session_state.qa_chain = None
+if "current_file" not in st.session_state:
+    st.session_state.current_file = None
 
 def pdf_to_document(uploaded_file):
     """    Streamlit 업로드 PDF를
@@ -40,100 +47,69 @@ def pdf_to_document(uploaded_file):
     pages = loader.load()
     return pages
 
-class StreamHandler(  BaseCallbackHandler ):
-    """
-    GPT가 토큰을 생성할 때마다
-    Streamlit 화면에 출력하는 Handler
+if uploaded_file is not None and openai_key:
+    # 새로운 파일이 업로드되었을 때만 벡터 DB 생성 및 체인 초기화 수행 (최적화)
+    if st.session_state.current_file != uploaded_file.name:
+        with st.spinner("문서를 분석하고 벡터 DB를 구축 중입니다..."):
+            pages = pdf_to_document(uploaded_file)
 
-    예:
-    GPT:   안녕하세요
-    생성 과정:
-    안
-    안녕
-    안녕하세요
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=500,
+                chunk_overlap=100
+            )
+            texts = text_splitter.split_documents(pages)
 
-    처럼 실시간 출력
-    """
-    def __init__(  self,    container  ):
-        self.container = container
-        self.text = ""
+            embeddings = OpenAIEmbeddings(api_key=openai_key)
+            db = Chroma.from_documents(documents=texts, embedding=embeddings)
+            retriever = db.as_retriever(search_kwargs={"k": 3})
 
-    def on_llm_new_token(  self,  token,   **kwargs ):
-        # 새 토큰 누적
-        self.text += token
-        # 화면 갱신
-        self.container.markdown(    self.text  )
+            llm = ChatOpenAI(
+                model="gpt-4o-mini",
+                temperature=0,
+                api_key=openai_key,
+                streaming=True # 스트리밍 활성화
+            )
 
-if uploaded_file is not None:
-    pages = pdf_to_document(   uploaded_file   )
-    # st.success(   f"PDF 페이지 : {len(pages)}"  )
+            prompt = ChatPromptTemplate.from_template(
+                """
+                당신은 PDF 분석 AI 입니다.
+                Context:   {context}
+                Question:  {input}
+                답변:
+                """
+            )
 
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=100
-    )
+            document_chain = create_stuff_documents_chain(llm, prompt)
+            qa_chain = create_retrieval_chain(retriever, document_chain)
 
-    texts = text_splitter.split_documents(    pages   )
+            # 생성된 체인과 파일명을 세션에 저장
+            st.session_state.qa_chain = qa_chain
+            st.session_state.current_file = uploaded_file.name
+            st.session_state.messages = [] # 새 문서 로드 시 대화 내역 초기화
+            
+        st.success("✅ 문서 학습이 완료되었습니다! 아래에서 질문을 시작해보세요.")
 
-    # st.info(  f"문서 조각 : {len(texts)}"  )
+# 체인이 구성되었으면 챗봇 UI 렌더링
+if st.session_state.qa_chain is not None:
+    st.header("💬 PDF에게 질문하세요")
 
-    embeddings = OpenAIEmbeddings(  api_key=openai_key   )
+    # 1. 이전 대화 기록 출력
+    for msg in st.session_state.messages:
+        st.chat_message(msg["role"]).write(msg["content"])
 
-    db = Chroma.from_documents(
-        documents=texts,
-        embedding=embeddings
-    )
+    # 2. 채팅 입력창 (질문 입력 시 동작)
+    if question := st.chat_input("문서 내용에 대해 질문하세요"):
+        # 사용자 질문 화면 표시 및 세션 기록
+        st.chat_message("user").write(question)
+        st.session_state.messages.append({"role": "user", "content": question})
 
-    retriever = db.as_retriever(
-        search_kwargs={
-            "k":3
-        }
-    )
+        # AI 답변 스트리밍 생성 및 세션 기록
+        with st.chat_message("assistant"):
+            def stream_answer():
+                for chunk in st.session_state.qa_chain.stream({"input": question}):
+                    if answer_chunk := chunk.get("answer"):
+                        yield answer_chunk
 
-    st.header(   "PDF에게 질문하세요"   )
-    question = st.text_input(   "질문 입력"    )
-
-    if st.button(   "질문하기"   ):
-        if question == "":
-            st.warning( "질문을 입력하세요"   )
-        else:
-            with st.spinner(  "답변 생성중..."  ,show_time=True  ): 
-
-                chat_box = st.empty()
-
-                handler = StreamHandler(      chat_box       )
-
-                llm = ChatOpenAI(
-                    model="gpt-4o-mini",
-                    temperature=0,
-                    api_key=openai_key,
-                    streaming=True,
-                    callbacks=[ handler  ]
-                )
-
-                prompt = ChatPromptTemplate.from_template(
-                    """
-                    당신은 PDF 분석 AI 입니다.
-                    Context:   {context}
-                    Question:  {input}
-                    답변:
-                    """
-                )
-
-                document_chain = ( create_stuff_documents_chain(   llm,    prompt    )   )
-
-                qa_chain = create_retrieval_chain(
-                    retriever,
-                    document_chain
-                )
-            ###############################################
-                def stream_answer():
-                    for chunk in qa_chain.stream({"input": question}):
-                        if answer_chunk := chunk.get("answer"):
-                            yield answer_chunk
-
-                st.write_stream(stream_answer)
-            ###################################################
-                # result = qa_chain.invoke(    {    "input": question    }      )
-                # st.write(result["answer"] )  # 이 부분 빠졌었습니다.
-                
+            # st.write_stream은 제너레이터의 결과를 실시간으로 출력하고 최종 조합된 문자열을 반환합니다.
+            full_response = st.write_stream(stream_answer)
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
