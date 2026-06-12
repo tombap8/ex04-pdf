@@ -126,26 +126,27 @@ if st.session_state.qa_chain:
         """)
     st.divider()
 
-    # 1. 채팅 히스토리 출력
+    # 1. 채팅 히스토리 출력: 지금까지 쌓인 사용자와 AI의 대화 내역을 순서대로 그립니다.
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
-            # AI 답변인 경우 참조된 데이터(Context)를 토글 형태로 표시
+            # [중요] AI 답변인 경우 어떤 원본 데이터(Context)를 참고했는지 확인할 수 있는 토글을 제공합니다.
             if msg.get("context"):
                 with st.expander("🔍 AI가 참조한 데이터 원본 확인"):
                     for i, doc in enumerate(msg["context"], 1):
                         st.markdown(f"**[데이터 {i}]**\n```text\n{doc.page_content}\n```")
 
-    # 2. 채팅 입력창
+    # 2. 채팅 입력창: 사용자가 메시지를 입력하고 엔터를 누르면 동작합니다.
     if query := st.chat_input("예: 2024년 3월 아남1 아파트의 건축년도와 도로명 주소는?"):
-        # 사용자 메시지 화면 표시 및 세션 저장
+        # 사용자가 입력한 메시지를 즉시 화면에 그리고 세션(messages 배열)에 기록합니다.
         st.session_state.messages.append({"role": "user", "content": query})
         with st.chat_message("user"):
             st.markdown(query)
         
-        # AI 답변 화면 표시 및 세션 저장
+        # AI 답변 화면 표시 및 세션 저장 영역
         with st.chat_message("assistant"):
             with st.spinner("문맥을 파악하여 데이터를 검색하고 있습니다..."):
+                # [중요] RAG 체인 실행: Retriever로 DB에서 유사 데이터를 찾고(Context 추출), LLM이 최종 답변을 도출합니다.
                 response = st.session_state.qa_chain.invoke({"input": query})
                 answer = response["answer"]
                 contexts = response["context"]
