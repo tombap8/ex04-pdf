@@ -1,5 +1,6 @@
 import os
 import tempfile
+import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from langchain_community.document_loaders import CSVLoader
@@ -25,6 +26,8 @@ if "qa_chain" not in st.session_state:
     st.session_state.qa_chain = None
 if "current_file" not in st.session_state:
     st.session_state.current_file = None
+if "df" not in st.session_state:
+    st.session_state.df = None
 
 # 사이드바: 설정 및 파일 업로드
 with st.sidebar:
@@ -47,8 +50,27 @@ if uploaded_file and openai_api_key:
                 tmp_file_path = tmp_file.name
             
             try:
-                # CSV 로드
-                loader = CSVLoader(file_path=tmp_file_path, encoding="cp949")
+                # 1. 파일 인코딩 및 상단 불필요한 메타데이터(안내문) 스킵 처리
+                with open(tmp_file_path, 'r', encoding='cp949') as f:
+                    lines = f.readlines()
+                
+                # 실제 데이터(헤더)가 시작하는 위치 찾기 (보통 쉼표가 여러 개 있는 행)
+                header_idx = 0
+                for i, line in enumerate(lines):
+                    if line.count(',') > 5: # 열(컬럼)이 5개 초과인 행을 헤더로 간주
+                        header_idx = i
+                        break
+                
+                # 실제 데이터만 추출하여 새로운 임시 파일(utf-8)로 저장
+                clean_tmp_file_path = tmp_file_path + "_clean.csv"
+                with open(clean_tmp_file_path, 'w', encoding='utf-8') as f:
+                    f.writelines(lines[header_idx:])
+                
+                # 사용자 요약 정보 제공용으로 Pandas로 읽어 세션에 저장 (정제된 파일 사용)
+                st.session_state.df = pd.read_csv(clean_tmp_file_path, encoding="utf-8")
+                
+                # LangChain CSVLoader 로드 (정제된 파일 사용)
+                loader = CSVLoader(file_path=clean_tmp_file_path, encoding="utf-8")
                 documents = loader.load()
                 
                 # 임베딩 및 Chroma DB 생성
@@ -83,9 +105,20 @@ if uploaded_file and openai_api_key:
                 # 처리 완료 후 임시 파일 삭제
                 if os.path.exists(tmp_file_path):
                     os.remove(tmp_file_path)
+                if 'clean_tmp_file_path' in locals() and os.path.exists(clean_tmp_file_path):
+                    os.remove(clean_tmp_file_path)
 
 # 챗봇 UI 메인 영역
 if st.session_state.qa_chain:
+    # --- 데이터 요약 정보 제공 UI ---
+    if st.session_state.df is not None:
+        with st.expander("📊 업로드된 데이터 구조 한눈에 보기 (질문 힌트)", expanded=False):
+            st.write(f"총 **{len(st.session_state.df)}**개의 데이터(Row)가 학습되었습니다.")
+            st.markdown(f"**🔹 질문 가능한 항목(컬럼):** `{'`, `'.join(st.session_state.df.columns.tolist())}`")
+            st.markdown("**🔹 데이터 미리보기 (상위 5개)**")
+            st.dataframe(st.session_state.df.head(), use_container_width=True)
+    st.divider()
+
     # 1. 채팅 히스토리 출력
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
